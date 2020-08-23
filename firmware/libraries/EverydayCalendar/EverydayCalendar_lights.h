@@ -10,6 +10,8 @@ public:
 	void begin();
 	void loadLedStatesFromMemory();
 	void saveLedStatesToMemory();
+	
+	bool isLEDOn(uint8_t month, uint8_t day);
 
 	void setLED(uint8_t month, uint8_t day, bool enable);
 	void toggleLED(uint8_t month, uint8_t day);

@@ -44,6 +44,14 @@ void EverydayCalendar_lights::clearAllLEDs(){
   memset(ledValues, 0, sizeof(ledValues));
 }
 
+bool EverydayCalendar_lights::isLEDOn(uint8_t month, uint8_t day) {
+  if (month > 11 || day > 30) {
+    return false;
+  }
+
+  return ledValues[month] & ((uint32_t)1 << day);
+}
+
 // Month is in range [0,11]
 // Day is in range [0,30]
 void EverydayCalendar_lights::setLED(uint8_t month, uint8_t day, bool enable){

@@ -1,5 +1,6 @@
 #include <EverydayCalendar_lights.h>
 #include <EverydayCalendar_touch.h>
+#include <EEPROM.h>
 
 typedef struct {
    int8_t    x;
@@ -10,9 +11,32 @@ EverydayCalendar_touch cal_touch;
 EverydayCalendar_lights cal_lights;
 int16_t brightness = 128;
 
+// Save birghtness to eeprom, add some buffer after LED values
+# define EEPROM_BRIGHTNESS sizeof(uint32_t) * (12 + 1) + sizeof(int16_t) * 0
+
+// Make sure random is a bit more random
+# define EEPROM_RANDOM_SEED sizeof(uint32_t) * (12 + 1) + sizeof(int16_t) * 1
+
+// Random animation timers
+uint8_t brightnessTimer = 255;
+uint8_t blink = 150;
+uint32_t timer = 500;
+
 void setup() {
   Serial.begin(9600);
   Serial.println("Sketch setup started");
+
+  // Make things a bit more random 
+  randomSeed(EEPROM.read(EEPROM_RANDOM_SEED));
+  EEPROM.write(EEPROM_RANDOM_SEED, random(0, 32767));
+
+  int16_t b = EEPROM.read(EEPROM_BRIGHTNESS);
+  Serial.print("Loaded brightness from EEPROM: ");
+  Serial.println(b);
+  if (b != 0xFF) {
+    brightness = b;
+  }
+  brightness = constrain(brightness, 0, 200);
   
   // Initialize LED functionality
   cal_lights.configure();
@@ -32,7 +56,7 @@ void setup() {
   cal_touch.configure();
   cal_touch.begin();
   cal_lights.loadLedStatesFromMemory();
-  delay(1500);
+  delay(1000);
 
   // Fade in
   for(int b = 0; b <= brightness; b++){
@@ -56,12 +80,15 @@ void loop() {
     // Brightness Buttons
     if(cal_touch.y == 31){
       if(cal_touch.x == 4){
-        brightness -= 3;
+        if (brightness < 5) brightness -= 1;
+        else brightness -= 2 * max(1, touchCount / 10);
       }else if(cal_touch.x == 6){
-        brightness += 2;
+        if (brightness < 5) brightness += 1;
+        else brightness += 2 * max(1, touchCount / 10);
       }
+
       brightness = constrain(brightness, 0, 200);
-      Serial.print("Brightness: ");
+      Serial.print("Brightness = ");
       Serial.println(brightness);
       cal_lights.setBrightness((uint8_t)brightness);
     }
@@ -94,13 +121,110 @@ void loop() {
       
       if(touchCount < 65535){
         touchCount++;
-        Serial.println(touchCount);
+//        Serial.print("touch count = ");
+//        Serial.println(touchCount);
       }
     }
   }
 
   previouslyHeldButton.x = cal_touch.x;
   previouslyHeldButton.y = cal_touch.y;
+
+  // Don't interrupt when a button is held down
+  if (touch) return;
+
+  // Prevent problems with wearing out EEPROM when holding down brightness buttons
+  brightnessTimer--;
+  if (brightnessTimer <= 0) {
+    brightnessTimer = 255;
+
+    int16_t current = EEPROM.read(EEPROM_BRIGHTNESS);
+    if (brightness != current) {
+      Serial.println("Writing new brightness to EEPROM");
+      EEPROM.put(EEPROM_BRIGHTNESS, brightness);
+    }
+  }
+
+  timer--;
+  if (timer <= 0) {
+    Serial.print("Time for a random animation");
+    timer = random(500000, 1000000);
+
+    int anim = random(0, 2);
+    Serial.println(anim);
+    switch(anim) {
+      case 1:
+        sidewaysAnim();
+        break;
+      default:
+        honeyDripToggle();
+        honeyDripToggle();
+        break;
+    }
+  }
+
+  blink--;
+//  Serial.println(blink);
+  if (blink <= 0) {
+    blink = 150;
+
+    bool found = false;
+    int foundMonth = -1;
+    int foundDay = -1;
+
+    static const uint8_t monthDayOffset[12] = {0, 3, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0};
+    for(int month = 0; month < 12; month++) {
+      for(int day = 0; day < 31; day++) {
+        int8_t adjustedDay = day - monthDayOffset[month];
+        if(adjustedDay >= 0) {
+          if (found && cal_lights.isLEDOn(month, adjustedDay)) found = false;
+          
+          if (!found && !cal_lights.isLEDOn(month, adjustedDay)) {
+            foundMonth = month;
+            foundDay = adjustedDay;
+            found = true;
+          }
+        }
+      }
+    }
+
+    if (found && foundMonth != -1 && foundDay != -1) {
+      cal_lights.toggleLED(foundMonth, foundDay);
+      delay(150);
+      cal_lights.toggleLED(foundMonth, foundDay);
+    }
+  }
+}
+
+void sidewaysAnim() {
+  static const uint8_t monthDayOffset[12] = {0, 3, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0};
+  // Turn on all LEDs one by one in the span of a few second
+  for(int day = 0; day < 31; day+= 2) {
+    for(int month = 0; month < 12; month++) {
+      int8_t adjustedDay = day - monthDayOffset[month];
+      if(adjustedDay >= 0) {
+        cal_lights.toggleLED(month, adjustedDay);
+        delay(50);
+        cal_lights.toggleLED(month, adjustedDay);
+      }
+    }
+  }
+}
+
+void honeyDripToggle(){
+  uint16_t interval_ms = 25;
+  static const uint8_t monthDayOffset[12] = {0, 3, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0};
+  // Turn on all LEDs one by one in the span of a few second
+  for(int day = 0; day < 31; day++){
+    for(int month = 0; month < 12; month++){
+      int8_t adjustedDay = day - monthDayOffset[month];
+      if(adjustedDay >= 0 ){
+        cal_lights.toggleLED(month, adjustedDay);
+      }
+    }
+    delay(interval_ms);
+    interval_ms = interval_ms + 2;
+  }
 }
 
 void honeyDrip(){
