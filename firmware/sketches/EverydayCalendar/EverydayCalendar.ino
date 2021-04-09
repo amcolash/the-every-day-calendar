@@ -22,6 +22,10 @@ uint8_t brightnessTimer = 255;
 uint8_t blink = 150;
 uint32_t timer = 500;
 
+// Only blink one day for a power-cycle. Thus when turned off by wifi outlet, it will reset this value
+// so only the current day will ever blink. Once the current day is touched, no more blinkin'
+bool shouldBlink = true;
+
 void setup() {
   Serial.begin(9600);
   Serial.println("Sketch setup started");
@@ -68,12 +72,25 @@ void setup() {
 }
 
 void loop() {
-  static Point previouslyHeldButton = {0xFF, 0xFF}; // 0xFF and 0xFF if no button is held
-  static uint16_t touchCount = 1;
-  static const uint8_t debounceCount = 3;
-  static const uint16_t clearCalendarCount = 1300; // ~40 seconds.  This is in units of touch sampling interval ~= 30ms.  
+  // Don't interrupt when a button is held down
+  if (handleTouch()) return;
+
+  handleBrightness();
+  
+  randomAnim();
+  blinkAnim();
+}
+
+
+Point previouslyHeldButton = {0xFF, 0xFF}; // 0xFF and 0xFF if no button is held
+uint16_t touchCount = 1;
+const uint8_t debounceCount = 3;
+const uint16_t clearCalendarCount = 1300; // ~40 seconds.  This is in units of touch sampling interval ~= 30ms.
+
+bool handleTouch() {
   Point buttonPressed = {0xFF, 0xFF};
   bool touch = cal_touch.scanForTouch();
+  
   // Handle a button press
   if(touch)
   {
@@ -111,6 +128,9 @@ void loop() {
         Serial.print(cal_touch.x);
         Serial.print("\ty: ");
         Serial.println(cal_touch.y);
+
+        // Turn off blinking when any button is pressed other than brightness
+        if(!(cal_touch.y == 31 && (cal_touch.x == 4 || cal_touch.x == 6))) shouldBlink = false;
       }
 
       // Check if the special "Reset" January 1 button is being held
@@ -130,9 +150,10 @@ void loop() {
   previouslyHeldButton.x = cal_touch.x;
   previouslyHeldButton.y = cal_touch.y;
 
-  // Don't interrupt when a button is held down
-  if (touch) return;
+  return touch;
+}
 
+void handleBrightness() {
   // Prevent problems with wearing out EEPROM when holding down brightness buttons
   brightnessTimer--;
   if (brightnessTimer <= 0) {
@@ -142,56 +163,6 @@ void loop() {
     if (brightness != current) {
       Serial.println("Writing new brightness to EEPROM");
       EEPROM.put(EEPROM_BRIGHTNESS, brightness);
-    }
-  }
-
-  timer--;
-  if (timer <= 0) {
-    Serial.print("Time for a random animation");
-    timer = random(500000, 1000000);
-
-    int anim = random(0, 2);
-    Serial.println(anim);
-    switch(anim) {
-      case 1:
-        sidewaysAnim();
-        break;
-      default:
-        honeyDripToggle();
-        honeyDripToggle();
-        break;
-    }
-  }
-
-  blink--;
-//  Serial.println(blink);
-  if (blink <= 0) {
-    blink = 150;
-
-    bool found = false;
-    int foundMonth = -1;
-    int foundDay = -1;
-
-    static const uint8_t monthDayOffset[12] = {0, 3, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0};
-    for(int month = 0; month < 12; month++) {
-      for(int day = 0; day < 31; day++) {
-        int8_t adjustedDay = day - monthDayOffset[month];
-        if(adjustedDay >= 0) {
-          if (found && cal_lights.isLEDOn(month, adjustedDay)) found = false;
-          
-          if (!found && !cal_lights.isLEDOn(month, adjustedDay)) {
-            foundMonth = month;
-            foundDay = adjustedDay;
-            found = true;
-          }
-        }
-      }
-    }
-
-    if (found && foundMonth != -1 && foundDay != -1) {
-      cal_lights.toggleLED(foundMonth, foundDay);
-      delay(150);
-      cal_lights.toggleLED(foundMonth, foundDay);
     }
   }
 }
@@ -253,4 +224,57 @@ void clearAnimation(){
     }
   }
   cal_lights.saveLedStatesToMemory();
+}
+
+void randomAnim() {
+  timer--;
+  if (timer <= 0) {
+    Serial.print("Time for a random animation");
+    timer = random(500000, 1000000);
+
+    int anim = random(0, 2);
+    Serial.println(anim);
+    switch(anim) {
+      case 1:
+        sidewaysAnim();
+        break;
+      default:
+        honeyDripToggle();
+        honeyDripToggle();
+        break;
+    }
+  }
+}
+
+void blinkAnim() {
+  blink--;
+  if (blink <= 0 && shouldBlink) {
+    blink = 150;
+
+    bool found = false;
+    int foundMonth = -1;
+    int foundDay = -1;
+
+    static const uint8_t monthDayOffset[12] = {0, 3, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0};
+    for(int month = 0; month < 12; month++) {
+      for(int day = 0; day < 31; day++) {
+        int8_t adjustedDay = day - monthDayOffset[month];
+        if(adjustedDay >= 0) {
+          if (found && cal_lights.isLEDOn(month, adjustedDay)) found = false;
+          
+          if (!found && !cal_lights.isLEDOn(month, adjustedDay)) {
+            foundMonth = month;
+            foundDay = adjustedDay;
+            found = true;
+          }
+        }
+      }
+    }
+
+    if (found && foundMonth != -1 && foundDay != -1) {
+      cal_lights.toggleLED(foundMonth, foundDay);
+      delay(150);
+      cal_lights.toggleLED(foundMonth, foundDay);
+    }
+  }
 }
