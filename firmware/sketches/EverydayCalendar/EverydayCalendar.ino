@@ -199,7 +199,7 @@ bool handleTouch() {
     || (debounceCount == 0))
     {
         // Spawn a particle when pressed in particle mode
-        if (particleMode && cal_touch.x != 11 && cal_touch.y != 30) {
+        if (particleMode && !(cal_touch.x == 11 && cal_touch.y == 30)) {
           pIndex = (pIndex + 1) % NUM_PARTICLES;
           spawnParticle(pIndex, cal_touch.x, cal_touch.y);
         } else if (!particleMode && touchCount == debounceCount) {
@@ -215,7 +215,7 @@ bool handleTouch() {
         Serial.println(cal_touch.y);
 
         // Turn off blinking when any button is pressed other than brightness / dec 31
-        if(!((cal_touch.x == 11) && (cal_touch.y == 30)) || !(cal_touch.y == 31 && (cal_touch.x == 4 || cal_touch.x == 6))) shouldBlink = false;
+        if(!((cal_touch.x == 11) && (cal_touch.y == 30)) && !(cal_touch.y == 31 && (cal_touch.x == 4 || cal_touch.x == 6))) shouldBlink = false;
       }
 
       // Check if the special "Reset" January 1 button is being held
